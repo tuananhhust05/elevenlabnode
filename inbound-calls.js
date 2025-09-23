@@ -48,7 +48,7 @@ export function registerInboundRoutes(fastify) {
 
   // WebSocket route for handling media streams from Twilio
   fastify.register(async (fastifyInstance) => {
-    fastifyInstance.get("/media-stream", { websocket: true }, async (connection, req) => {
+    fastifyInstance.get("/media-stream-inbound", { websocket: true }, async (connection, req) => {
       console.info("[Server] Twilio connected to media stream.");
 
       let streamSid = null;
