@@ -134,6 +134,7 @@ export function registerOutboundRoutes(fastify) {
       let twilioRecordingFile = null;
       let elevenLabsRecordingStream = null;
       let elevenLabsRecordingFile = null;
+      let elevenLabsRawStream = null;
 
       // Handle WebSocket errors
       ws.on('error', console.error);
@@ -185,11 +186,20 @@ export function registerOutboundRoutes(fastify) {
                       };
                       ws.send(JSON.stringify(audioData));
 
-                      // Ghi âm audio từ ElevenLabs (đã là PCM16)
+                      // Debug ElevenLabs audio format
+                      console.log(`[ElevenLabs] Audio chunk size: ${message.audio.chunk.length} chars`);
+                      
+                      // Ghi âm audio từ ElevenLabs
                       if (elevenLabsRecordingStream) {
                         try {
                           const audioBuffer = Buffer.from(message.audio.chunk, "base64");
+                          console.log(`[ElevenLabs] Decoded buffer size: ${audioBuffer.length} bytes`);
                           elevenLabsRecordingStream.write(audioBuffer);
+                          
+                          // Ghi file raw để debug
+                          if (elevenLabsRawStream) {
+                            elevenLabsRawStream.write(audioBuffer);
+                          }
                         } catch (error) {
                           console.error("[Recording] Error writing ElevenLabs audio:", error);
                         }
@@ -288,13 +298,17 @@ export function registerOutboundRoutes(fastify) {
                 bitDepth: 16
               });
 
-              // ElevenLabs recording (16kHz, PCM16)
+              // ElevenLabs recording - thử nhiều sample rate
               elevenLabsRecordingFile = path.join(recordingsDir, `${callSid}_elevenlabs_${timestamp}.wav`);
               elevenLabsRecordingStream = new wav.FileWriter(elevenLabsRecordingFile, {
                 channels: 1,
-                sampleRate: 16000,  // ElevenLabs sample rate
+                sampleRate: 22050,  // Thử 22.05kHz (phổ biến cho voice)
                 bitDepth: 16
               });
+              
+              // Tạo thêm file raw để debug
+              const elevenLabsRawFile = path.join(recordingsDir, `${callSid}_elevenlabs_raw_${timestamp}.raw`);
+              elevenLabsRawStream = fs.createWriteStream(elevenLabsRawFile);
 
               console.log(`[Recording] Started Twilio recording: ${twilioRecordingFile}`);
               console.log(`[Recording] Started ElevenLabs recording: ${elevenLabsRecordingFile}`);
@@ -341,6 +355,12 @@ export function registerOutboundRoutes(fastify) {
                 elevenLabsRecordingStream = null;
                 elevenLabsRecordingFile = null;
               }
+              
+              if (elevenLabsRawStream) {
+                elevenLabsRawStream.end();
+                console.log(`[Recording] ElevenLabs raw file saved`);
+                elevenLabsRawStream = null;
+              }
               break;
 
             default:
@@ -368,6 +388,12 @@ export function registerOutboundRoutes(fastify) {
           console.log(`[Recording] ElevenLabs recording saved: ${elevenLabsRecordingFile}`);
           elevenLabsRecordingStream = null;
           elevenLabsRecordingFile = null;
+        }
+        
+        if (elevenLabsRawStream) {
+          elevenLabsRawStream.end();
+          console.log(`[Recording] ElevenLabs raw file saved`);
+          elevenLabsRawStream = null;
         }
         
         if (elevenLabsWs?.readyState === WebSocket.OPEN) {
