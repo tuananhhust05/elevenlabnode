@@ -50,26 +50,26 @@ export function registerOutboundRoutes(fastify) {
   // Function to decode µ-law to PCM16 (similar to audioop.ulaw2lin in Python)
   function ulaw2lin(ulawBuffer) {
     const pcmBuffer = Buffer.alloc(ulawBuffer.length * 2);
-    
+
     for (let i = 0; i < ulawBuffer.length; i++) {
       let ulaw = ulawBuffer[i];
-      
+
       // µ-law to linear conversion
       ulaw = ~ulaw;
       const sign = ulaw & 0x80;
       const exponent = (ulaw >> 4) & 0x07;
       const mantissa = ulaw & 0x0F;
-      
+
       let sample = (mantissa << (exponent + 3)) + (1 << (exponent + 2));
       if (sign) sample = -sample;
-      
+
       // Clamp to 16-bit range
       sample = Math.max(-32768, Math.min(32767, sample));
-      
+
       // Write as little-endian 16-bit
       pcmBuffer.writeInt16LE(sample, i * 2);
     }
-    
+
     return pcmBuffer;
   }
 
@@ -128,7 +128,7 @@ export function registerOutboundRoutes(fastify) {
       let callSid = null;
       let elevenLabsWs = null;
       let customParameters = null;  // Add this to store parameters
-      
+
       // Separate recording streams
       let twilioRecordingStream = null;
       let twilioRecordingFile = null;
@@ -187,25 +187,26 @@ export function registerOutboundRoutes(fastify) {
 
                       // Debug ElevenLabs audio format
                       console.log(`[ElevenLabs] Audio chunk size: ${message.audio.chunk.length} chars`);
-                      
+
                       // Ghi âm audio từ ElevenLabs
                       if (elevenLabsRecordingStream) {
                         try {
-                          const ulawBuffer = Buffer.from(message.audio.chunk, "base64");
-                          const pcmBuffer = ulaw2lin(ulawBuffer); // Dùng lại hàm chuyển đổi
+                          const audioBuffer = Buffer.from(audioBase64, "base64");
+
+                          // DEBUG: Manh mối #2 & #3 - Kiểm tra nội dung và độ dài
+                          console.log(`[ElevenLabs DEBUG] Decoded buffer size: ${audioBuffer.length} bytes`);
+                          // Kiểm tra "Magic Bytes". Nếu là file WAV, nó sẽ bắt đầu bằng "RIFF" (hex: 52 49 46 46)
+                          console.log(`[ElevenLabs DEBUG] First 16 bytes (hex):`, audioBuffer.slice(0, 16).toString('hex'));
+                          console.log(`[ElevenLabs DEBUG] First 4 bytes (ascii):`, audioBuffer.slice(0, 4).toString('ascii'));
+
+                          // **GIẢ THUYẾT HIỆN TẠI:** ElevenLabs gửi về µ-law 8kHz để tương thích Twilio.
+                          // Chúng ta sẽ chuyển nó thành PCM để lưu file WAV.
+                          const pcmBuffer = ulaw2lin(audioBuffer);
                           elevenLabsRecordingStream.write(pcmBuffer);
+
                         } catch (error) {
                           console.error("[Recording] Error writing ElevenLabs audio:", error);
                         }
-                        // try {
-                        //   const audioBuffer = Buffer.from(message.audio.chunk, "base64");
-                        //   console.log(`[ElevenLabs] Decoded buffer size: ${audioBuffer.length} bytes`);
-                        //   console.log(`[ElevenLabs] First 16 bytes:`, audioBuffer.slice(0, 16).toString('hex'));
-                        //   console.log(`[ElevenLabs] First 16 bytes as string:`, audioBuffer.slice(0, 16).toString('ascii'));
-                        //   elevenLabsRecordingStream.write(audioBuffer);
-                        // } catch (error) {
-                        //   console.error("[Recording] Error writing ElevenLabs audio:", error);
-                        // }
                       }
                     } else if (message.audio_event?.audio_base_64) {
                       const audioData = {
@@ -219,18 +220,22 @@ export function registerOutboundRoutes(fastify) {
                       // Ghi âm audio từ ElevenLabs (đã là PCM16)
                       if (elevenLabsRecordingStream) {
                         try {
-                          const ulawBuffer = Buffer.from(message.audio.chunk, "base64");
-                          const pcmBuffer = ulaw2lin(ulawBuffer); // Dùng lại hàm chuyển đổi
+                          const audioBuffer = Buffer.from(audioBase64, "base64");
+
+                          // DEBUG: Manh mối #2 & #3 - Kiểm tra nội dung và độ dài
+                          console.log(`[ElevenLabs DEBUG] Decoded buffer size: ${audioBuffer.length} bytes`);
+                          // Kiểm tra "Magic Bytes". Nếu là file WAV, nó sẽ bắt đầu bằng "RIFF" (hex: 52 49 46 46)
+                          console.log(`[ElevenLabs DEBUG] First 16 bytes (hex):`, audioBuffer.slice(0, 16).toString('hex'));
+                          console.log(`[ElevenLabs DEBUG] First 4 bytes (ascii):`, audioBuffer.slice(0, 4).toString('ascii'));
+
+                          // **GIẢ THUYẾT HIỆN TẠI:** ElevenLabs gửi về µ-law 8kHz để tương thích Twilio.
+                          // Chúng ta sẽ chuyển nó thành PCM để lưu file WAV.
+                          const pcmBuffer = ulaw2lin(audioBuffer);
                           elevenLabsRecordingStream.write(pcmBuffer);
+
                         } catch (error) {
                           console.error("[Recording] Error writing ElevenLabs audio:", error);
                         }
-                        // try {
-                        //   const audioBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
-                        //   elevenLabsRecordingStream.write(audioBuffer);
-                        // } catch (error) {
-                        //   console.error("[Recording] Error writing ElevenLabs audio:", error);
-                        // }
                       }
                     }
                   } else {
@@ -299,7 +304,7 @@ export function registerOutboundRoutes(fastify) {
 
               // Tạo file ghi âm riêng cho Twilio và ElevenLabs
               const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              
+
               // Twilio recording (8kHz, µ-law decoded to PCM16)
               twilioRecordingFile = path.join(recordingsDir, `${callSid}_twilio_${timestamp}.wav`);
               twilioRecordingStream = new wav.FileWriter(twilioRecordingFile, {
@@ -354,14 +359,14 @@ export function registerOutboundRoutes(fastify) {
                 twilioRecordingStream = null;
                 twilioRecordingFile = null;
               }
-              
+
               if (elevenLabsRecordingStream) {
                 elevenLabsRecordingStream.end();
                 console.log(`[Recording] ElevenLabs recording saved: ${elevenLabsRecordingFile}`);
                 elevenLabsRecordingStream = null;
                 elevenLabsRecordingFile = null;
               }
-              
+
               break;
 
             default:
@@ -375,7 +380,7 @@ export function registerOutboundRoutes(fastify) {
       // Handle WebSocket closure
       ws.on("close", () => {
         console.log("[Twilio] Client disconnected");
-        
+
         // Đảm bảo kết thúc ghi âm
         if (twilioRecordingStream) {
           twilioRecordingStream.end();
@@ -383,15 +388,15 @@ export function registerOutboundRoutes(fastify) {
           twilioRecordingStream = null;
           twilioRecordingFile = null;
         }
-        
+
         if (elevenLabsRecordingStream) {
           elevenLabsRecordingStream.end();
           console.log(`[Recording] ElevenLabs recording saved: ${elevenLabsRecordingFile}`);
           elevenLabsRecordingStream = null;
           elevenLabsRecordingFile = null;
         }
-        
-        
+
+
         if (elevenLabsWs?.readyState === WebSocket.OPEN) {
           elevenLabsWs.close();
         }
