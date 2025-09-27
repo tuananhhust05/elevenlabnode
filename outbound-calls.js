@@ -7,16 +7,16 @@ import wav from 'wav';
 export function registerOutboundRoutes(fastify) {
   // Check for required environment variables
   const {
-      ELEVENLABS_API_KEY,
-      ELEVENLABS_AGENT_ID,
-      TWILIO_ACCOUNT_SID,
-      TWILIO_AUTH_TOKEN,
-      TWILIO_PHONE_NUMBER
+    ELEVENLABS_API_KEY,
+    ELEVENLABS_AGENT_ID,
+    TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN,
+    TWILIO_PHONE_NUMBER
   } = process.env;
 
   if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-      console.error("Missing required environment variables");
-      throw new Error("Missing required environment variables");
+    console.error("Missing required environment variables");
+    throw new Error("Missing required environment variables");
   }
 
   // Initialize Twilio client
@@ -24,102 +24,102 @@ export function registerOutboundRoutes(fastify) {
 
   // Helper function to get signed URL for authenticated conversations
   async function getSignedUrl() {
-      try {
-          const response = await fetch(
-              `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`, {
-                  method: 'GET',
-                  headers: {
-                      'xi-api-key': ELEVENLABS_API_KEY
-                  }
-              }
-          );
-
-          if (!response.ok) {
-              throw new Error(`Failed to get signed URL: ${response.statusText}`);
-          }
-
-          const data = await response.json();
-          return data.signed_url;
-      } catch (error) {
-          console.error("Error getting signed URL:", error);
-          throw error;
+    try {
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`, {
+        method: 'GET',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY
+        }
       }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to get signed URL: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.signed_url;
+    } catch (error) {
+      console.error("Error getting signed URL:", error);
+      throw error;
+    }
   }
 
   // Function to decode µ-law to PCM16
   function ulaw2lin(ulawBuffer) {
-      const pcmBuffer = Buffer.alloc(ulawBuffer.length * 2);
-      for (let i = 0; i < ulawBuffer.length; i++) {
-          let ulaw = ~ulawBuffer[i];
-          const sign = (ulaw & 0x80);
-          const exponent = (ulaw >> 4) & 0x07;
-          const mantissa = ulaw & 0x0F;
-          let sample = (mantissa << (exponent + 3)) + (1 << (exponent + 2));
-          if (sign) sample = -sample;
-          sample = Math.max(-32768, Math.min(32767, sample));
-          pcmBuffer.writeInt16LE(sample, i * 2);
-      }
-      return pcmBuffer;
+    const pcmBuffer = Buffer.alloc(ulawBuffer.length * 2);
+    for (let i = 0; i < ulawBuffer.length; i++) {
+      let ulaw = ~ulawBuffer[i];
+      const sign = (ulaw & 0x80);
+      const exponent = (ulaw >> 4) & 0x07;
+      const mantissa = ulaw & 0x0F;
+      let sample = (mantissa << (exponent + 3)) + (1 << (exponent + 2));
+      if (sign) sample = -sample;
+      sample = Math.max(-32768, Math.min(32767, sample));
+      pcmBuffer.writeInt16LE(sample, i * 2);
+    }
+    return pcmBuffer;
   }
-  
+
   // THAY ĐỔI 1: Hàm trợ giúp để chuyển đổi Mono PCM thành Stereo PCM
   // channel: 0 for left, 1 for right
   function interleaveMonoToStereo(monoBuffer, channel = 0) {
-      const sampleCount = monoBuffer.length / 2;
-      const stereoBuffer = Buffer.alloc(sampleCount * 4); // 2 channels * 2 bytes/sample
+    const sampleCount = monoBuffer.length / 2;
+    const stereoBuffer = Buffer.alloc(sampleCount * 4); // 2 channels * 2 bytes/sample
 
-      for (let i = 0; i < sampleCount; i++) {
-          const sample = monoBuffer.readInt16LE(i * 2);
-          if (channel === 0) { // Left channel
-              stereoBuffer.writeInt16LE(sample, i * 4);
-              stereoBuffer.writeInt16LE(0, i * 4 + 2); // Right channel silent
-          } else { // Right channel
-              stereoBuffer.writeInt16LE(0, i * 4); // Left channel silent
-              stereoBuffer.writeInt16LE(sample, i * 4 + 2);
-          }
+    for (let i = 0; i < sampleCount; i++) {
+      const sample = monoBuffer.readInt16LE(i * 2);
+      if (channel === 0) { // Left channel
+        stereoBuffer.writeInt16LE(sample, i * 4);
+        stereoBuffer.writeInt16LE(0, i * 4 + 2); // Right channel silent
+      } else { // Right channel
+        stereoBuffer.writeInt16LE(0, i * 4); // Left channel silent
+        stereoBuffer.writeInt16LE(sample, i * 4 + 2);
       }
-      return stereoBuffer;
+    }
+    return stereoBuffer;
   }
 
 
   // Route to initiate outbound calls
   fastify.post("/outbound-call", async (request, reply) => {
-      const {
-          number,
-          prompt
-      } = request.body;
+    const {
+      number,
+      prompt
+    } = request.body;
 
-      if (!number) {
-          return reply.code(400).send({
-              error: "Phone number is required"
-          });
-      }
+    if (!number) {
+      return reply.code(400).send({
+        error: "Phone number is required"
+      });
+    }
 
-      try {
-          const call = await twilioClient.calls.create({
-              from: TWILIO_PHONE_NUMBER,
-              to: number,
-              url: `https://4skale.com/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}`
-          });
+    try {
+      const call = await twilioClient.calls.create({
+        from: TWILIO_PHONE_NUMBER,
+        to: number,
+        url: `https://4skale.com/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}`
+      });
 
-          reply.send({
-              success: true,
-              message: "Call initiated",
-              callSid: call.sid
-          });
-      } catch (error) {
-          console.error("Error initiating outbound call:", error);
-          reply.code(500).send({
-              success: false,
-              error: "Failed to initiate call"
-          });
-      }
+      reply.send({
+        success: true,
+        message: "Call initiated",
+        callSid: call.sid
+      });
+    } catch (error) {
+      console.error("Error initiating outbound call:", error);
+      reply.code(500).send({
+        success: false,
+        error: "Failed to initiate call"
+      });
+    }
   });
 
   // TwiML route for outbound calls
   fastify.all("/outbound-call-twiml", async (request, reply) => {
-      const prompt = request.query.prompt || '';
-      const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+    const prompt = request.query.prompt || '';
+    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
           <Connect>
             <Stream url="wss://4skale.com/media-stream">
@@ -127,194 +127,265 @@ export function registerOutboundRoutes(fastify) {
             </Stream>
           </Connect>
         </Response>`;
-      reply.type("text/xml").send(twimlResponse);
+    reply.type("text/xml").send(twimlResponse);
+  });
+
+  fastify.post("/status-callback", async (request, reply) => {
+    try {
+      const recordingsDir = path.join(process.cwd(), 'recordings');
+
+      // Kiểm tra thư mục tồn tại
+      if (!fs.existsSync(recordingsDir)) {
+        return reply.code(404).send({ error: "Recordings directory not found" });
+      }
+
+      // Tìm file WAV mới nhất theo thời gian tạo
+      const files = fs.readdirSync(recordingsDir)
+        .filter(file => file.endsWith('.wav'))
+        .map(file => {
+          const filePath = path.join(recordingsDir, file);
+          const stats = fs.statSync(filePath);
+          return {
+            name: file,
+            path: filePath,
+            created: stats.birthtime
+          };
+        })
+        .sort((a, b) => b.created - a.created); // Sắp xếp mới nhất trước
+
+      if (files.length === 0) {
+        return reply.code(404).send({ error: "No WAV files found" });
+      }
+
+      const latestFile = files[0];
+      const recordingUrl = `https://4skale.com/recordings/${latestFile.name}`;
+
+      // Payload đơn giản
+      const payload = {
+        duration: 0, // Có thể tính sau nếu cần
+        recording_url: recordingUrl,
+        transcript: "Transcripting.",
+        sentiment: "positive",
+        sentiment_score: 0.85,
+        status: "completed",
+        local_file: latestFile.path,
+        received_at: new Date().toISOString()
+      };
+
+      console.log('[StatusCallback] Latest file:', latestFile.name);
+      console.log('[StatusCallback] Sending payload:', payload);
+
+      // Gọi webhook
+      const response = await fetch("https://4skale.com/api/webhook/auto-update-latest", {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook failed: ${response.status}`);
+      }
+
+      reply.send({
+        message: "Webhook sent successfully",
+        file: latestFile.name,
+        payload
+      });
+
+    } catch (error) {
+      console.error('[StatusCallback] Error:', error);
+      reply.code(500).send({
+        error: "Failed to process callback",
+        message: error.message
+      });
+    }
   });
 
   // WebSocket route for handling media streams
   fastify.register(async (fastifyInstance) => {
-      fastifyInstance.get("/media-stream", {
-          websocket: true
-      }, (ws, req) => {
-          console.info("[Server] Twilio connected to outbound media stream");
+    fastifyInstance.get("/media-stream", {
+      websocket: true
+    }, (ws, req) => {
+      console.info("[Server] Twilio connected to outbound media stream");
 
-          let streamSid = null;
-          let callSid = null;
-          let elevenLabsWs = null;
-          let customParameters = null;
+      let streamSid = null;
+      let callSid = null;
+      let elevenLabsWs = null;
+      let customParameters = null;
 
-          // THAY ĐỔI 2: Chỉ sử dụng một stream và một file để ghi âm
-          let conversationRecordingStream = null;
-          let conversationRecordingFile = null;
+      // THAY ĐỔI 2: Chỉ sử dụng một stream và một file để ghi âm
+      let conversationRecordingStream = null;
+      let conversationRecordingFile = null;
 
-          ws.on('error', console.error);
+      ws.on('error', console.error);
 
-          const setupElevenLabs = async () => {
-              try {
-                  const signedUrl = await getSignedUrl();
-                  elevenLabsWs = new WebSocket(signedUrl);
+      const setupElevenLabs = async () => {
+        try {
+          const signedUrl = await getSignedUrl();
+          elevenLabsWs = new WebSocket(signedUrl);
 
-                  elevenLabsWs.on("open", () => {
-                      console.log("[ElevenLabs] Connected to Conversational AI");
-                      const initialConfig = {
-                          type: "conversation_initiation_client_data",
-                          conversation_config_override: {
-                              agent: {
-                                  prompt: {
-                                      prompt: customParameters?.prompt || "you are a gary from the phone store"
-                                  },
-                                  first_message: "hey there! how can I help you today?",
-                              },
-                          }
-                      };
-                      console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
-                      elevenLabsWs.send(JSON.stringify(initialConfig));
-                  });
+          elevenLabsWs.on("open", () => {
+            console.log("[ElevenLabs] Connected to Conversational AI");
+            const initialConfig = {
+              type: "conversation_initiation_client_data",
+              conversation_config_override: {
+                agent: {
+                  prompt: {
+                    prompt: customParameters?.prompt || "you are a gary from the phone store"
+                  },
+                  first_message: "hey there! how can I help you today?",
+                },
+              }
+            };
+            console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
+            elevenLabsWs.send(JSON.stringify(initialConfig));
+          });
 
-                  elevenLabsWs.on("message", (data) => {
-                      try {
-                          const message = JSON.parse(data);
-                          switch (message.type) {
-                              case "audio":
-                                  if (streamSid) {
-                                      const audioBase64 = message.audio?.chunk || message.audio_event?.audio_base_64;
-                                      if (audioBase64) {
-                                          ws.send(JSON.stringify({
-                                              event: "media",
-                                              streamSid,
-                                              media: {
-                                                  payload: audioBase64
-                                              }
-                                          }));
+          elevenLabsWs.on("message", (data) => {
+            try {
+              const message = JSON.parse(data);
+              switch (message.type) {
+                case "audio":
+                  if (streamSid) {
+                    const audioBase64 = message.audio?.chunk || message.audio_event?.audio_base_64;
+                    if (audioBase64) {
+                      ws.send(JSON.stringify({
+                        event: "media",
+                        streamSid,
+                        media: {
+                          payload: audioBase64
+                        }
+                      }));
 
-                                          // THAY ĐỔI 3: Ghi âm thanh từ ElevenLabs vào kênh PHẢI (right channel)
-                                          if (conversationRecordingStream) {
-                                              try {
-                                                  const ulawBuffer = Buffer.from(audioBase64, "base64");
-                                                  const pcmBuffer = ulaw2lin(ulawBuffer);
-                                                  const stereoPcmBuffer = interleaveMonoToStereo(pcmBuffer, 1); // 1 for right channel
-                                                  conversationRecordingStream.write(stereoPcmBuffer);
-                                              } catch (error) {
-                                                  console.error("[Recording] Error writing ElevenLabs audio:", error);
-                                              }
-                                          }
-                                      }
-                                  }
-                                  break;
-                              case "interruption":
-                                  if (streamSid) {
-                                      ws.send(JSON.stringify({
-                                          event: "clear",
-                                          streamSid
-                                      }));
-                                  }
-                                  break;
-                              case "ping":
-                                  if (message.ping_event?.event_id) {
-                                      elevenLabsWs.send(JSON.stringify({
-                                          type: "pong",
-                                          event_id: message.ping_event.event_id
-                                      }));
-                                  }
-                                  break;
-                          }
-                      } catch (error) {
-                          console.error("[ElevenLabs] Error processing message:", error);
+                      // THAY ĐỔI 3: Ghi âm thanh từ ElevenLabs vào kênh PHẢI (right channel)
+                      if (conversationRecordingStream) {
+                        try {
+                          const ulawBuffer = Buffer.from(audioBase64, "base64");
+                          const pcmBuffer = ulaw2lin(ulawBuffer);
+                          const stereoPcmBuffer = interleaveMonoToStereo(pcmBuffer, 1); // 1 for right channel
+                          conversationRecordingStream.write(stereoPcmBuffer);
+                        } catch (error) {
+                          console.error("[Recording] Error writing ElevenLabs audio:", error);
+                        }
                       }
-                  });
-
-                  elevenLabsWs.on("error", (error) => console.error("[ElevenLabs] WebSocket error:", error));
-                  elevenLabsWs.on("close", () => console.log("[ElevenLabs] Disconnected"));
-
-              } catch (error) {
-                  console.error("[ElevenLabs] Setup error:", error);
-              }
-          };
-
-          setupElevenLabs();
-
-          ws.on("message", (message) => {
-              try {
-                  const msg = JSON.parse(message);
-                  switch (msg.event) {
-                      case "start":
-                          streamSid = msg.start.streamSid;
-                          callSid = msg.start.callSid;
-                          customParameters = msg.start.customParameters;
-
-                          const recordingsDir = path.join(process.cwd(), 'recordings');
-                          if (!fs.existsSync(recordingsDir)) {
-                              fs.mkdirSync(recordingsDir, {
-                                  recursive: true
-                              });
-                          }
-
-                          // THAY ĐỔI 4: Thiết lập một file ghi âm STEREO
-                          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                          conversationRecordingFile = path.join(recordingsDir, `${callSid}_conversation_${timestamp}.wav`);
-                          conversationRecordingStream = new wav.FileWriter(conversationRecordingFile, {
-                              channels: 2, // STEREO
-                              sampleRate: 8000,
-                              bitDepth: 16
-                          });
-                          
-                          console.log(`[Recording] Started conversation recording: ${conversationRecordingFile}`);
-                          break;
-
-                      case "media":
-                          if (elevenLabsWs?.readyState === WebSocket.OPEN) {
-                              elevenLabsWs.send(JSON.stringify({
-                                  user_audio_chunk: Buffer.from(msg.media.payload, "base64").toString("base64")
-                              }));
-                          }
-
-                          // THAY ĐỔI 5: Ghi âm thanh từ Twilio vào kênh TRÁI (left channel)
-                          if (conversationRecordingStream) {
-                              try {
-                                  const ulawBuffer = Buffer.from(msg.media.payload, "base64");
-                                  const pcmBuffer = ulaw2lin(ulawBuffer);
-                                  const stereoPcmBuffer = interleaveMonoToStereo(pcmBuffer, 0); // 0 for left channel
-                                  conversationRecordingStream.write(stereoPcmBuffer);
-                              } catch (error) {
-                                  console.error("[Recording] Error decoding Twilio audio:", error);
-                              }
-                          }
-                          break;
-
-                      case "stop":
-                          console.log(`[Twilio] Stream ${streamSid} ended`);
-                          if (elevenLabsWs?.readyState === WebSocket.OPEN) {
-                              elevenLabsWs.close();
-                          }
-                          
-                          // THAY ĐỔI 6: Kết thúc file ghi âm duy nhất
-                          if (conversationRecordingStream) {
-                              conversationRecordingStream.end();
-                              console.log(`[Recording] Conversation recording saved: ${conversationRecordingFile}`);
-                              conversationRecordingStream = null;
-                              conversationRecordingFile = null;
-                          }
-                          break;
+                    }
                   }
-              } catch (error) {
-                  console.error("[Twilio] Error processing message:", error);
+                  break;
+                case "interruption":
+                  if (streamSid) {
+                    ws.send(JSON.stringify({
+                      event: "clear",
+                      streamSid
+                    }));
+                  }
+                  break;
+                case "ping":
+                  if (message.ping_event?.event_id) {
+                    elevenLabsWs.send(JSON.stringify({
+                      type: "pong",
+                      event_id: message.ping_event.event_id
+                    }));
+                  }
+                  break;
               }
+            } catch (error) {
+              console.error("[ElevenLabs] Error processing message:", error);
+            }
           });
 
-          ws.on("close", () => {
-              console.log("[Twilio] Client disconnected");
-              
-              // Đảm bảo kết thúc ghi âm khi kết nối bị đóng đột ngột
-              if (conversationRecordingStream) {
-                  conversationRecordingStream.end();
-                  console.log(`[Recording] Conversation recording saved: ${conversationRecordingFile}`);
-                  conversationRecordingStream = null;
-                  conversationRecordingFile = null;
+          elevenLabsWs.on("error", (error) => console.error("[ElevenLabs] WebSocket error:", error));
+          elevenLabsWs.on("close", () => console.log("[ElevenLabs] Disconnected"));
+
+        } catch (error) {
+          console.error("[ElevenLabs] Setup error:", error);
+        }
+      };
+
+      setupElevenLabs();
+
+      ws.on("message", (message) => {
+        try {
+          const msg = JSON.parse(message);
+          switch (msg.event) {
+            case "start":
+              streamSid = msg.start.streamSid;
+              callSid = msg.start.callSid;
+              customParameters = msg.start.customParameters;
+
+              const recordingsDir = path.join(process.cwd(), 'recordings');
+              if (!fs.existsSync(recordingsDir)) {
+                fs.mkdirSync(recordingsDir, {
+                  recursive: true
+                });
               }
 
+              // THAY ĐỔI 4: Thiết lập một file ghi âm STEREO
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              conversationRecordingFile = path.join(recordingsDir, `${callSid}_conversation_${timestamp}.wav`);
+              conversationRecordingStream = new wav.FileWriter(conversationRecordingFile, {
+                channels: 2, // STEREO
+                sampleRate: 8000,
+                bitDepth: 16
+              });
+
+              console.log(`[Recording] Started conversation recording: ${conversationRecordingFile}`);
+              break;
+
+            case "media":
               if (elevenLabsWs?.readyState === WebSocket.OPEN) {
-                  elevenLabsWs.close();
+                elevenLabsWs.send(JSON.stringify({
+                  user_audio_chunk: Buffer.from(msg.media.payload, "base64").toString("base64")
+                }));
               }
-          });
+
+              // THAY ĐỔI 5: Ghi âm thanh từ Twilio vào kênh TRÁI (left channel)
+              if (conversationRecordingStream) {
+                try {
+                  const ulawBuffer = Buffer.from(msg.media.payload, "base64");
+                  const pcmBuffer = ulaw2lin(ulawBuffer);
+                  const stereoPcmBuffer = interleaveMonoToStereo(pcmBuffer, 0); // 0 for left channel
+                  conversationRecordingStream.write(stereoPcmBuffer);
+                } catch (error) {
+                  console.error("[Recording] Error decoding Twilio audio:", error);
+                }
+              }
+              break;
+
+            case "stop":
+              console.log(`[Twilio] Stream ${streamSid} ended`);
+              if (elevenLabsWs?.readyState === WebSocket.OPEN) {
+                elevenLabsWs.close();
+              }
+
+              // THAY ĐỔI 6: Kết thúc file ghi âm duy nhất
+              if (conversationRecordingStream) {
+                conversationRecordingStream.end();
+                console.log(`[Recording] Conversation recording saved: ${conversationRecordingFile}`);
+                conversationRecordingStream = null;
+                conversationRecordingFile = null;
+              }
+              break;
+          }
+        } catch (error) {
+          console.error("[Twilio] Error processing message:", error);
+        }
       });
+
+      ws.on("close", () => {
+        console.log("[Twilio] Client disconnected");
+
+        // Đảm bảo kết thúc ghi âm khi kết nối bị đóng đột ngột
+        if (conversationRecordingStream) {
+          conversationRecordingStream.end();
+          console.log(`[Recording] Conversation recording saved: ${conversationRecordingFile}`);
+          conversationRecordingStream = null;
+          conversationRecordingFile = null;
+        }
+
+        if (elevenLabsWs?.readyState === WebSocket.OPEN) {
+          elevenLabsWs.close();
+        }
+      });
+    });
   });
 }
