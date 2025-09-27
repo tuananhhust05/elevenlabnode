@@ -47,29 +47,26 @@ export function registerOutboundRoutes(fastify) {
     }
   }
   
-  async function getWavDuration(filePath) {
-    return new Promise((resolve, reject) => {
-      const reader = wav.Reader();
-      const stream = fs.createReadStream(filePath);
+  function getWavDuration(filePath) {
+    try {
+      const buffer = fs.readFileSync(filePath);
       
-      // reader.on('format', (format) => {
-      //   // Format object chứa thông tin về file WAV
-      //   console.log('WAV Format:', format);
-      // });
+      // Đọc WAV header
+      const sampleRate = buffer.readUInt32LE(24);  // Byte 24-27: Sample Rate
+      const channels = buffer.readUInt16LE(22);    // Byte 22-23: Channels  
+      const bitDepth = buffer.readUInt16LE(34);    // Byte 34-35: Bits per Sample
+      const dataSize = buffer.readUInt32LE(40);    // Byte 40-43: Data Size
       
-      // reader.on('data', (chunk) => {
-      //   // Đếm số frame đã đọc
-      // });
+      // Tính thời lượng
+      const bytesPerSample = bitDepth / 8;
+      const bytesPerSecond = sampleRate * channels * bytesPerSample;
+      const duration = dataSize / bytesPerSecond;
       
-      reader.on('end', () => {
-        // Tính thời lượng dựa trên format
-        const duration = reader.readableLength / (format.sampleRate * format.channels * (format.bitDepth / 8));
-        resolve(duration);
-      });
-      
-      reader.on('error', reject);
-      stream.pipe(reader);
-    });
+      return Math.round(duration * 100) / 100; // Làm tròn 2 chữ số
+    } catch (error) {
+      console.error('Error reading WAV duration:', error);
+      return 0;
+    }
   }
 
   // Function to decode µ-law to PCM16
