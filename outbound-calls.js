@@ -188,12 +188,13 @@ export function registerOutboundRoutes(fastify) {
                       // Debug ElevenLabs audio format
                       console.log(`[ElevenLabs] Audio chunk size: ${message.audio.chunk.length} chars`);
                       
-                      // Ghi âm audio từ ElevenLabs (raw data)
+                      // Ghi âm audio từ ElevenLabs
                       if (elevenLabsRecordingStream) {
                         try {
                           const audioBuffer = Buffer.from(message.audio.chunk, "base64");
                           console.log(`[ElevenLabs] Decoded buffer size: ${audioBuffer.length} bytes`);
                           console.log(`[ElevenLabs] First 16 bytes:`, audioBuffer.slice(0, 16).toString('hex'));
+                          console.log(`[ElevenLabs] First 16 bytes as string:`, audioBuffer.slice(0, 16).toString('ascii'));
                           elevenLabsRecordingStream.write(audioBuffer);
                         } catch (error) {
                           console.error("[Recording] Error writing ElevenLabs audio:", error);
@@ -293,9 +294,13 @@ export function registerOutboundRoutes(fastify) {
                 bitDepth: 16
               });
 
-              // ElevenLabs recording - ghi raw data để debug format
-              elevenLabsRecordingFile = path.join(recordingsDir, `${callSid}_elevenlabs_${timestamp}.raw`);
-              elevenLabsRecordingStream = fs.createWriteStream(elevenLabsRecordingFile);
+              // ElevenLabs recording - thử tạo WAV với header đúng
+              elevenLabsRecordingFile = path.join(recordingsDir, `${callSid}_elevenlabs_${timestamp}.wav`);
+              elevenLabsRecordingStream = new wav.FileWriter(elevenLabsRecordingFile, {
+                channels: 1,
+                sampleRate: 24000,  // Thử 24kHz
+                bitDepth: 16
+              });
 
               console.log(`[Recording] Started Twilio recording: ${twilioRecordingFile}`);
               console.log(`[Recording] Started ElevenLabs recording: ${elevenLabsRecordingFile}`);
