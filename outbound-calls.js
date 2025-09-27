@@ -128,8 +128,12 @@ export function registerOutboundRoutes(fastify) {
       let callSid = null;
       let elevenLabsWs = null;
       let customParameters = null;  // Add this to store parameters
-      let recordingStream = null;
-      let recordingFile = null;
+      
+      // Separate recording streams
+      let twilioRecordingStream = null;
+      let twilioRecordingFile = null;
+      let elevenLabsRecordingStream = null;
+      let elevenLabsRecordingFile = null;
 
       // Handle WebSocket errors
       ws.on('error', console.error);
@@ -182,10 +186,10 @@ export function registerOutboundRoutes(fastify) {
                       ws.send(JSON.stringify(audioData));
 
                       // Ghi âm audio từ ElevenLabs (đã là PCM16)
-                      if (recordingStream) {
+                      if (elevenLabsRecordingStream) {
                         try {
                           const audioBuffer = Buffer.from(message.audio.chunk, "base64");
-                          recordingStream.write(audioBuffer);
+                          elevenLabsRecordingStream.write(audioBuffer);
                         } catch (error) {
                           console.error("[Recording] Error writing ElevenLabs audio:", error);
                         }
@@ -200,10 +204,10 @@ export function registerOutboundRoutes(fastify) {
                       };
                       ws.send(JSON.stringify(audioData));
                       // Ghi âm audio từ ElevenLabs (đã là PCM16)
-                      if (recordingStream) {
+                      if (elevenLabsRecordingStream) {
                         try {
                           const audioBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
-                          recordingStream.write(audioBuffer);
+                          elevenLabsRecordingStream.write(audioBuffer);
                         } catch (error) {
                           console.error("[Recording] Error writing ElevenLabs audio:", error);
                         }
@@ -260,7 +264,7 @@ export function registerOutboundRoutes(fastify) {
       ws.on("message", (message) => {
         try {
           const msg = JSON.parse(message);
-          // console.log(`[Twilio] Received event: ${msg.event}`);
+          console.log(`[Twilio] Received event: ${msg.event}`);
 
           switch (msg.event) {
             case "start":
@@ -273,18 +277,27 @@ export function registerOutboundRoutes(fastify) {
                 fs.mkdirSync(recordingsDir, { recursive: true });
               }
 
-              // Tạo file ghi âm
+              // Tạo file ghi âm riêng cho Twilio và ElevenLabs
               const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              recordingFile = path.join(recordingsDir, `${callSid}_${timestamp}.wav`);
-
-              // Tạo WAV writer với đúng parameters cho Twilio
-              recordingStream = new wav.FileWriter(recordingFile, {
+              
+              // Twilio recording (8kHz, µ-law decoded to PCM16)
+              twilioRecordingFile = path.join(recordingsDir, `${callSid}_twilio_${timestamp}.wav`);
+              twilioRecordingStream = new wav.FileWriter(twilioRecordingFile, {
                 channels: 1,
-                sampleRate: 8000,
+                sampleRate: 8000,  // Twilio native sample rate
                 bitDepth: 16
               });
 
-              console.log(`[Recording] Started recording to: ${recordingFile}`);
+              // ElevenLabs recording (16kHz, PCM16)
+              elevenLabsRecordingFile = path.join(recordingsDir, `${callSid}_elevenlabs_${timestamp}.wav`);
+              elevenLabsRecordingStream = new wav.FileWriter(elevenLabsRecordingFile, {
+                channels: 1,
+                sampleRate: 16000,  // ElevenLabs sample rate
+                bitDepth: 16
+              });
+
+              console.log(`[Recording] Started Twilio recording: ${twilioRecordingFile}`);
+              console.log(`[Recording] Started ElevenLabs recording: ${elevenLabsRecordingFile}`);
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
               console.log('[Twilio] Start parameters:', customParameters);
               break;
@@ -298,11 +311,11 @@ export function registerOutboundRoutes(fastify) {
               }
 
               // Ghi âm audio từ Twilio (decode µ-law thành PCM16)
-              if (recordingStream) {
+              if (twilioRecordingStream) {
                 try {
                   const ulawBuffer = Buffer.from(msg.media.payload, "base64");
                   const pcmBuffer = ulaw2lin(ulawBuffer);
-                  recordingStream.write(pcmBuffer);
+                  twilioRecordingStream.write(pcmBuffer);
                 } catch (error) {
                   console.error("[Recording] Error decoding Twilio audio:", error);
                 }
@@ -315,11 +328,18 @@ export function registerOutboundRoutes(fastify) {
                 elevenLabsWs.close();
               }
               // Kết thúc ghi âm
-              if (recordingStream) {
-                recordingStream.end();
-                console.log(`[Recording] Recording saved to: ${recordingFile}`);
-                recordingStream = null;
-                recordingFile = null;
+              if (twilioRecordingStream) {
+                twilioRecordingStream.end();
+                console.log(`[Recording] Twilio recording saved: ${twilioRecordingFile}`);
+                twilioRecordingStream = null;
+                twilioRecordingFile = null;
+              }
+              
+              if (elevenLabsRecordingStream) {
+                elevenLabsRecordingStream.end();
+                console.log(`[Recording] ElevenLabs recording saved: ${elevenLabsRecordingFile}`);
+                elevenLabsRecordingStream = null;
+                elevenLabsRecordingFile = null;
               }
               break;
 
@@ -334,6 +354,22 @@ export function registerOutboundRoutes(fastify) {
       // Handle WebSocket closure
       ws.on("close", () => {
         console.log("[Twilio] Client disconnected");
+        
+        // Đảm bảo kết thúc ghi âm
+        if (twilioRecordingStream) {
+          twilioRecordingStream.end();
+          console.log(`[Recording] Twilio recording saved: ${twilioRecordingFile}`);
+          twilioRecordingStream = null;
+          twilioRecordingFile = null;
+        }
+        
+        if (elevenLabsRecordingStream) {
+          elevenLabsRecordingStream.end();
+          console.log(`[Recording] ElevenLabs recording saved: ${elevenLabsRecordingFile}`);
+          elevenLabsRecordingStream = null;
+          elevenLabsRecordingFile = null;
+        }
+        
         if (elevenLabsWs?.readyState === WebSocket.OPEN) {
           elevenLabsWs.close();
         }
