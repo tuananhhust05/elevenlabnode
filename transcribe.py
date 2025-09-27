@@ -3,7 +3,10 @@ from faster_whisper import WhisperModel
 from groq import Groq
 import os
 import json
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 app = Flask(__name__)
 
 # Load models
@@ -75,6 +78,6 @@ def extract_keywords(transcript):
     except Exception as e:
         print(f"Error extracting keywords: {e}")
         return []
-        
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8089)
