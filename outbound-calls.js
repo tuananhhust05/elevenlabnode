@@ -166,6 +166,7 @@ export function registerOutboundRoutes(fastify) {
 
           elevenLabsWs.on("message", (data) => {
             try {
+              console.log("[ElevenLabs] Received message:", data);
               const message = JSON.parse(data);
 
               switch (message.type) {
