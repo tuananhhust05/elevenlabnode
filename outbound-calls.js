@@ -47,6 +47,32 @@ export function registerOutboundRoutes(fastify) {
     }
   }
 
+  // Function to decode µ-law to PCM16 (similar to audioop.ulaw2lin in Python)
+  function ulaw2lin(ulawBuffer) {
+    const pcmBuffer = Buffer.alloc(ulawBuffer.length * 2);
+    
+    for (let i = 0; i < ulawBuffer.length; i++) {
+      let ulaw = ulawBuffer[i];
+      
+      // µ-law to linear conversion
+      ulaw = ~ulaw;
+      const sign = ulaw & 0x80;
+      const exponent = (ulaw >> 4) & 0x07;
+      const mantissa = ulaw & 0x0F;
+      
+      let sample = (mantissa << (exponent + 3)) + (1 << (exponent + 2));
+      if (sign) sample = -sample;
+      
+      // Clamp to 16-bit range
+      sample = Math.max(-32768, Math.min(32767, sample));
+      
+      // Write as little-endian 16-bit
+      pcmBuffer.writeInt16LE(sample, i * 2);
+    }
+    
+    return pcmBuffer;
+  }
+
   // Route to initiate outbound calls
   fastify.post("/outbound-call", async (request, reply) => {
     const { number, prompt } = request.body;
@@ -155,10 +181,14 @@ export function registerOutboundRoutes(fastify) {
                       };
                       ws.send(JSON.stringify(audioData));
 
+                      // Ghi âm audio từ ElevenLabs (đã là PCM16)
                       if (recordingStream) {
-                        console.log(`[Recording] elevenlabs Writing audio to: ${recordingFile}`);
-                        const audioBuffer = Buffer.from(message.audio.chunk, "base64");
-                        recordingStream.write(audioBuffer);
+                        try {
+                          const audioBuffer = Buffer.from(message.audio.chunk, "base64");
+                          recordingStream.write(audioBuffer);
+                        } catch (error) {
+                          console.error("[Recording] Error writing ElevenLabs audio:", error);
+                        }
                       }
                     } else if (message.audio_event?.audio_base_64) {
                       const audioData = {
@@ -169,10 +199,14 @@ export function registerOutboundRoutes(fastify) {
                         }
                       };
                       ws.send(JSON.stringify(audioData));
+                      // Ghi âm audio từ ElevenLabs (đã là PCM16)
                       if (recordingStream) {
-                        console.log(`[Recording] elevenlabs Writing audio to: ${recordingFile}`);
-                        const audioBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
-                        recordingStream.write(audioBuffer);
+                        try {
+                          const audioBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
+                          recordingStream.write(audioBuffer);
+                        } catch (error) {
+                          console.error("[Recording] Error writing ElevenLabs audio:", error);
+                        }
                       }
                     }
                   } else {
@@ -243,7 +277,7 @@ export function registerOutboundRoutes(fastify) {
               const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
               recordingFile = path.join(recordingsDir, `${callSid}_${timestamp}.wav`);
 
-              // Tạo WAV writer
+              // Tạo WAV writer với đúng parameters cho Twilio
               recordingStream = new wav.FileWriter(recordingFile, {
                 channels: 1,
                 sampleRate: 8000,
@@ -263,10 +297,15 @@ export function registerOutboundRoutes(fastify) {
                 elevenLabsWs.send(JSON.stringify(audioMessage));
               }
 
+              // Ghi âm audio từ Twilio (decode µ-law thành PCM16)
               if (recordingStream) {
-                console.log(`[Recording] twilio Writing audio to: ${recordingFile}`);
-                const audioBuffer = Buffer.from(msg.media.payload, "base64");
-                recordingStream.write(audioBuffer);
+                try {
+                  const ulawBuffer = Buffer.from(msg.media.payload, "base64");
+                  const pcmBuffer = ulaw2lin(ulawBuffer);
+                  recordingStream.write(pcmBuffer);
+                } catch (error) {
+                  console.error("[Recording] Error decoding Twilio audio:", error);
+                }
               }
               break;
 
