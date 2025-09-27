@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import Twilio from "twilio";
 import fs from "fs";
 import wav from "wav";
+import path from "path";
 
 export function registerOutboundRoutes(fastify) {
   // Check for required environment variables
@@ -27,9 +28,9 @@ export function registerOutboundRoutes(fastify) {
       const response = await fetch(
         `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'xi-api-key': ELEVENLABS_API_KEY
+            "xi-api-key": ELEVENLABS_API_KEY
           }
         }
       );
@@ -77,7 +78,7 @@ export function registerOutboundRoutes(fastify) {
 
   // TwiML route for outbound calls
   fastify.all("/outbound-call-twiml", async (request, reply) => {
-    const prompt = request.query.prompt || '';
+    const prompt = request.query.prompt || "";
 
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
       <Response>
@@ -107,9 +108,9 @@ export function registerOutboundRoutes(fastify) {
       let elevenLabsWriteStream = null;
 
       // Handle WebSocket errors
-      ws.on('error', console.error);
+      ws.on("error", console.error);
 
-      // Set up ElevenLabs connection
+      // Setup ElevenLabs
       const setupElevenLabs = async () => {
         try {
           const signedUrl = await getSignedUrl();
@@ -118,7 +119,6 @@ export function registerOutboundRoutes(fastify) {
           elevenLabsWs.on("open", () => {
             console.log("[ElevenLabs] Connected to Conversational AI");
 
-            // Send initial configuration with prompt and first message
             const initialConfig = {
               type: "conversation_initiation_client_data",
               conversation_config_override: {
@@ -130,7 +130,6 @@ export function registerOutboundRoutes(fastify) {
             };
 
             console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
-
             elevenLabsWs.send(JSON.stringify(initialConfig));
           });
 
@@ -162,32 +161,24 @@ export function registerOutboundRoutes(fastify) {
                       };
                       ws.send(JSON.stringify(audioData));
 
-                      // Save to file (ElevenLabs audio)
+                      // Save to ElevenLabs file
                       if (elevenLabsWriteStream) {
                         const buffer = Buffer.from(audioChunk, "base64");
                         elevenLabsWriteStream.write(buffer);
                       }
                     }
-                  } else {
-                    console.log("[ElevenLabs] Received audio but no StreamSid yet");
                   }
                   break;
 
                 case "interruption":
                   if (streamSid) {
-                    ws.send(JSON.stringify({
-                      event: "clear",
-                      streamSid
-                    }));
+                    ws.send(JSON.stringify({ event: "clear", streamSid }));
                   }
                   break;
 
                 case "ping":
                   if (message.ping_event?.event_id) {
-                    elevenLabsWs.send(JSON.stringify({
-                      type: "pong",
-                      event_id: message.ping_event.event_id
-                    }));
+                    elevenLabsWs.send(JSON.stringify({ type: "pong", event_id: message.ping_event.event_id }));
                   }
                   break;
 
@@ -212,7 +203,6 @@ export function registerOutboundRoutes(fastify) {
         }
       };
 
-      // Set up ElevenLabs connection
       setupElevenLabs();
 
       // Handle messages from Twilio
@@ -227,14 +217,20 @@ export function registerOutboundRoutes(fastify) {
               callSid = msg.start.callSid;
               customParameters = msg.start.customParameters;
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
-              console.log('[Twilio] Start parameters:', customParameters);
+              console.log("[Twilio] Start parameters:", customParameters);
 
               // Init file writers
               const baseDir = path.join(process.cwd(), "recordings");
               if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir);
 
-              twilioWriteStream = fs.createWriteStream(path.join(baseDir, `${callSid}_twilio.wav`));
-              elevenLabsWriteStream = fs.createWriteStream(path.join(baseDir, `${callSid}_elevenlabs.wav`));
+              const twilioFile = path.join(baseDir, `${callSid}_twilio.wav`);
+              const elevenLabsFile = path.join(baseDir, `${callSid}_elevenlabs.wav`);
+
+              // Create file descriptors immediately
+              twilioWriteStream = fs.createWriteStream(twilioFile, { flags: "w" });
+              elevenLabsWriteStream = fs.createWriteStream(elevenLabsFile, { flags: "w" });
+
+              console.log(`[File] Recording files created: ${twilioFile}, ${elevenLabsFile}`);
               break;
 
             case "media":
@@ -245,7 +241,6 @@ export function registerOutboundRoutes(fastify) {
                 elevenLabsWs.send(JSON.stringify(audioMessage));
               }
 
-              // Save Twilio audio
               if (twilioWriteStream) {
                 const buffer = Buffer.from(msg.media.payload, "base64");
                 twilioWriteStream.write(buffer);
@@ -254,12 +249,8 @@ export function registerOutboundRoutes(fastify) {
 
             case "stop":
               console.log(`[Twilio] Stream ${streamSid} ended`);
+              if (elevenLabsWs?.readyState === WebSocket.OPEN) elevenLabsWs.close();
 
-              if (elevenLabsWs?.readyState === WebSocket.OPEN) {
-                elevenLabsWs.close();
-              }
-
-              // Close file streams
               if (twilioWriteStream) twilioWriteStream.end();
               if (elevenLabsWriteStream) elevenLabsWriteStream.end();
               break;
@@ -272,14 +263,9 @@ export function registerOutboundRoutes(fastify) {
         }
       });
 
-      // Handle WebSocket closure
       ws.on("close", () => {
         console.log("[Twilio] Client disconnected");
-        if (elevenLabsWs?.readyState === WebSocket.OPEN) {
-          elevenLabsWs.close();
-        }
-
-        // Close file streams
+        if (elevenLabsWs?.readyState === WebSocket.OPEN) elevenLabsWs.close();
         if (twilioWriteStream) twilioWriteStream.end();
         if (elevenLabsWriteStream) elevenLabsWriteStream.end();
       });
