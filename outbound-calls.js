@@ -154,6 +154,12 @@ export function registerOutboundRoutes(fastify) {
                         }
                       };
                       ws.send(JSON.stringify(audioData));
+
+                      if (recordingStream) {
+                        console.log(`[Recording] elevenlabs Writing audio to: ${recordingFile}`);
+                        const audioBuffer = Buffer.from(message.audio.chunk, "base64");
+                        recordingStream.write(audioBuffer);
+                      }
                     } else if (message.audio_event?.audio_base_64) {
                       const audioData = {
                         event: "media",
@@ -163,6 +169,11 @@ export function registerOutboundRoutes(fastify) {
                         }
                       };
                       ws.send(JSON.stringify(audioData));
+                      if (recordingStream) {
+                        console.log(`[Recording] elevenlabs Writing audio to: ${recordingFile}`);
+                        const audioBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
+                        recordingStream.write(audioBuffer);
+                      }
                     }
                   } else {
                     console.log("[ElevenLabs] Received audio but no StreamSid yet");
@@ -227,18 +238,18 @@ export function registerOutboundRoutes(fastify) {
               if (!fs.existsSync(recordingsDir)) {
                 fs.mkdirSync(recordingsDir, { recursive: true });
               }
-              
+
               // Tạo file ghi âm
               const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
               recordingFile = path.join(recordingsDir, `${callSid}_${timestamp}.wav`);
-              
+
               // Tạo WAV writer
               recordingStream = new wav.FileWriter(recordingFile, {
                 channels: 1,
                 sampleRate: 8000,
                 bitDepth: 16
               });
-              
+
               console.log(`[Recording] Started recording to: ${recordingFile}`);
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
               console.log('[Twilio] Start parameters:', customParameters);
@@ -251,12 +262,25 @@ export function registerOutboundRoutes(fastify) {
                 };
                 elevenLabsWs.send(JSON.stringify(audioMessage));
               }
+
+              if (recordingStream) {
+                console.log(`[Recording] twilio Writing audio to: ${recordingFile}`);
+                const audioBuffer = Buffer.from(msg.media.payload, "base64");
+                recordingStream.write(audioBuffer);
+              }
               break;
 
             case "stop":
               console.log(`[Twilio] Stream ${streamSid} ended`);
               if (elevenLabsWs?.readyState === WebSocket.OPEN) {
                 elevenLabsWs.close();
+              }
+              // Kết thúc ghi âm
+              if (recordingStream) {
+                recordingStream.end();
+                console.log(`[Recording] Recording saved to: ${recordingFile}`);
+                recordingStream = null;
+                recordingFile = null;
               }
               break;
 
