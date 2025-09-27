@@ -4,6 +4,8 @@ import fastifyFormBody from "@fastify/formbody";
 import fastifyWs from "@fastify/websocket";
 import { registerInboundRoutes } from './inbound-calls.js';
 import { registerOutboundRoutes } from './outbound-calls.js';
+import fastifyStatic from '@fastify/static';
+
 
 // Load environment variables from .env file
 dotenv.config();
@@ -15,6 +17,12 @@ const fastify = Fastify({
 
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
+// Register static file serving
+fastify.register(fastifyStatic, {
+  root: path.join(process.cwd(), 'recordings'),
+  prefix: '/recordings/', // URL prefix
+  list: true // Cho phép list files trong folder
+});
 
 const PORT = process.env.PORT || 5059;
 
