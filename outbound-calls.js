@@ -1,10 +1,12 @@
 import WebSocket from "ws";
 import Twilio from "twilio";
+import fs from "fs";
+import wav from "wav";
 
 export function registerOutboundRoutes(fastify) {
   // Check for required environment variables
-  const { 
-    ELEVENLABS_API_KEY, 
+  const {
+    ELEVENLABS_API_KEY,
     ELEVENLABS_AGENT_ID,
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
@@ -59,16 +61,16 @@ export function registerOutboundRoutes(fastify) {
         url: `https://4skale.com/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}`
       });
 
-      reply.send({ 
-        success: true, 
-        message: "Call initiated", 
-        callSid: call.sid 
+      reply.send({
+        success: true,
+        message: "Call initiated",
+        callSid: call.sid
       });
     } catch (error) {
       console.error("Error initiating outbound call:", error);
-      reply.code(500).send({ 
-        success: false, 
-        error: "Failed to initiate call" 
+      reply.code(500).send({
+        success: false,
+        error: "Failed to initiate call"
       });
     }
   });
@@ -98,7 +100,11 @@ export function registerOutboundRoutes(fastify) {
       let streamSid = null;
       let callSid = null;
       let elevenLabsWs = null;
-      let customParameters = null;  // Add this to store parameters
+      let customParameters = null;
+
+      // File write streams
+      let twilioWriteStream = null;
+      let elevenLabsWriteStream = null;
 
       // Handle WebSocket errors
       ws.on('error', console.error);
@@ -125,7 +131,6 @@ export function registerOutboundRoutes(fastify) {
 
             console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
 
-            // Send the configuration to ElevenLabs
             elevenLabsWs.send(JSON.stringify(initialConfig));
           });
 
@@ -140,24 +145,28 @@ export function registerOutboundRoutes(fastify) {
 
                 case "audio":
                   if (streamSid) {
+                    let audioChunk = null;
+
                     if (message.audio?.chunk) {
-                      const audioData = {
-                        event: "media",
-                        streamSid,
-                        media: {
-                          payload: message.audio.chunk
-                        }
-                      };
-                      ws.send(JSON.stringify(audioData));
+                      audioChunk = message.audio.chunk;
                     } else if (message.audio_event?.audio_base_64) {
+                      audioChunk = message.audio_event.audio_base_64;
+                    }
+
+                    if (audioChunk) {
+                      // Forward to Twilio
                       const audioData = {
                         event: "media",
                         streamSid,
-                        media: {
-                          payload: message.audio_event.audio_base_64
-                        }
+                        media: { payload: audioChunk }
                       };
                       ws.send(JSON.stringify(audioData));
+
+                      // Save to file (ElevenLabs audio)
+                      if (elevenLabsWriteStream) {
+                        const buffer = Buffer.from(audioChunk, "base64");
+                        elevenLabsWriteStream.write(buffer);
+                      }
                     }
                   } else {
                     console.log("[ElevenLabs] Received audio but no StreamSid yet");
@@ -166,9 +175,9 @@ export function registerOutboundRoutes(fastify) {
 
                 case "interruption":
                   if (streamSid) {
-                    ws.send(JSON.stringify({ 
+                    ws.send(JSON.stringify({
                       event: "clear",
-                      streamSid 
+                      streamSid
                     }));
                   }
                   break;
@@ -216,9 +225,16 @@ export function registerOutboundRoutes(fastify) {
             case "start":
               streamSid = msg.start.streamSid;
               callSid = msg.start.callSid;
-              customParameters = msg.start.customParameters;  // Store parameters
+              customParameters = msg.start.customParameters;
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
               console.log('[Twilio] Start parameters:', customParameters);
+
+              // Init file writers
+              const baseDir = path.join(process.cwd(), "recordings");
+              if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir);
+
+              twilioWriteStream = fs.createWriteStream(path.join(baseDir, `${callSid}_twilio.wav`));
+              elevenLabsWriteStream = fs.createWriteStream(path.join(baseDir, `${callSid}_elevenlabs.wav`));
               break;
 
             case "media":
@@ -228,13 +244,24 @@ export function registerOutboundRoutes(fastify) {
                 };
                 elevenLabsWs.send(JSON.stringify(audioMessage));
               }
+
+              // Save Twilio audio
+              if (twilioWriteStream) {
+                const buffer = Buffer.from(msg.media.payload, "base64");
+                twilioWriteStream.write(buffer);
+              }
               break;
 
             case "stop":
               console.log(`[Twilio] Stream ${streamSid} ended`);
+
               if (elevenLabsWs?.readyState === WebSocket.OPEN) {
                 elevenLabsWs.close();
               }
+
+              // Close file streams
+              if (twilioWriteStream) twilioWriteStream.end();
+              if (elevenLabsWriteStream) elevenLabsWriteStream.end();
               break;
 
             default:
@@ -251,6 +278,10 @@ export function registerOutboundRoutes(fastify) {
         if (elevenLabsWs?.readyState === WebSocket.OPEN) {
           elevenLabsWs.close();
         }
+
+        // Close file streams
+        if (twilioWriteStream) twilioWriteStream.end();
+        if (elevenLabsWriteStream) elevenLabsWriteStream.end();
       });
     });
   });
