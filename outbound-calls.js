@@ -191,14 +191,21 @@ export function registerOutboundRoutes(fastify) {
                       // Ghi âm audio từ ElevenLabs
                       if (elevenLabsRecordingStream) {
                         try {
-                          const audioBuffer = Buffer.from(message.audio.chunk, "base64");
-                          console.log(`[ElevenLabs] Decoded buffer size: ${audioBuffer.length} bytes`);
-                          console.log(`[ElevenLabs] First 16 bytes:`, audioBuffer.slice(0, 16).toString('hex'));
-                          console.log(`[ElevenLabs] First 16 bytes as string:`, audioBuffer.slice(0, 16).toString('ascii'));
-                          elevenLabsRecordingStream.write(audioBuffer);
+                          const ulawBuffer = Buffer.from(message.audio.chunk, "base64");
+                          const pcmBuffer = ulaw2lin(ulawBuffer); // Dùng lại hàm chuyển đổi
+                          elevenLabsRecordingStream.write(pcmBuffer);
                         } catch (error) {
                           console.error("[Recording] Error writing ElevenLabs audio:", error);
                         }
+                        // try {
+                        //   const audioBuffer = Buffer.from(message.audio.chunk, "base64");
+                        //   console.log(`[ElevenLabs] Decoded buffer size: ${audioBuffer.length} bytes`);
+                        //   console.log(`[ElevenLabs] First 16 bytes:`, audioBuffer.slice(0, 16).toString('hex'));
+                        //   console.log(`[ElevenLabs] First 16 bytes as string:`, audioBuffer.slice(0, 16).toString('ascii'));
+                        //   elevenLabsRecordingStream.write(audioBuffer);
+                        // } catch (error) {
+                        //   console.error("[Recording] Error writing ElevenLabs audio:", error);
+                        // }
                       }
                     } else if (message.audio_event?.audio_base_64) {
                       const audioData = {
@@ -212,11 +219,18 @@ export function registerOutboundRoutes(fastify) {
                       // Ghi âm audio từ ElevenLabs (đã là PCM16)
                       if (elevenLabsRecordingStream) {
                         try {
-                          const audioBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
-                          elevenLabsRecordingStream.write(audioBuffer);
+                          const ulawBuffer = Buffer.from(message.audio.chunk, "base64");
+                          const pcmBuffer = ulaw2lin(ulawBuffer); // Dùng lại hàm chuyển đổi
+                          elevenLabsRecordingStream.write(pcmBuffer);
                         } catch (error) {
                           console.error("[Recording] Error writing ElevenLabs audio:", error);
                         }
+                        // try {
+                        //   const audioBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
+                        //   elevenLabsRecordingStream.write(audioBuffer);
+                        // } catch (error) {
+                        //   console.error("[Recording] Error writing ElevenLabs audio:", error);
+                        // }
                       }
                     }
                   } else {
@@ -298,7 +312,7 @@ export function registerOutboundRoutes(fastify) {
               elevenLabsRecordingFile = path.join(recordingsDir, `${callSid}_elevenlabs_${timestamp}.wav`);
               elevenLabsRecordingStream = new wav.FileWriter(elevenLabsRecordingFile, {
                 channels: 1,
-                sampleRate: 24000,  // Thử 24kHz
+                sampleRate: 8000,  // Thử 24kHz
                 bitDepth: 16
               });
 
