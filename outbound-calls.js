@@ -29,9 +29,7 @@ export function registerOutboundRoutes(fastify) {
         `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
         {
           method: "GET",
-          headers: {
-            "xi-api-key": ELEVENLABS_API_KEY
-          }
+          headers: { "xi-api-key": ELEVENLABS_API_KEY }
         }
       );
 
@@ -161,7 +159,7 @@ export function registerOutboundRoutes(fastify) {
                       };
                       ws.send(JSON.stringify(audioData));
 
-                      // Save to ElevenLabs file
+                      // Save ElevenLabs audio
                       if (elevenLabsWriteStream) {
                         const buffer = Buffer.from(audioChunk, "base64");
                         elevenLabsWriteStream.write(buffer);
@@ -219,16 +217,28 @@ export function registerOutboundRoutes(fastify) {
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
               console.log("[Twilio] Start parameters:", customParameters);
 
-              // Init file writers
+              // Init file writers with WAV headers
               const baseDir = path.join(process.cwd(), "recordings");
               if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir);
 
               const twilioFile = path.join(baseDir, `${callSid}_twilio.wav`);
               const elevenLabsFile = path.join(baseDir, `${callSid}_elevenlabs.wav`);
 
-              // Create file descriptors immediately
-              twilioWriteStream = fs.createWriteStream(twilioFile, { flags: "w" });
-              elevenLabsWriteStream = fs.createWriteStream(elevenLabsFile, { flags: "w" });
+              // Twilio: PCM µ-law 8kHz mono
+              twilioWriteStream = new wav.Writer({
+                channels: 1,
+                sampleRate: 8000,
+                bitDepth: 16
+              });
+              twilioWriteStream.pipe(fs.createWriteStream(twilioFile));
+
+              // ElevenLabs: PCM 16kHz mono
+              elevenLabsWriteStream = new wav.Writer({
+                channels: 1,
+                sampleRate: 16000,
+                bitDepth: 16
+              });
+              elevenLabsWriteStream.pipe(fs.createWriteStream(elevenLabsFile));
 
               console.log(`[File] Recording files created: ${twilioFile}, ${elevenLabsFile}`);
               break;
