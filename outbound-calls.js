@@ -151,6 +151,8 @@ export function registerOutboundRoutes(fastify) {
         received_at: new Date().toISOString()
       };
 
+      console.log('[Webhook] Sending initial webhook for:', payload);
+
       const response = await fetch("https://4skale.com/api/webhook/auto-update-latest", {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
