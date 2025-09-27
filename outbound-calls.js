@@ -52,14 +52,14 @@ export function registerOutboundRoutes(fastify) {
       const reader = wav.Reader();
       const stream = fs.createReadStream(filePath);
       
-      reader.on('format', (format) => {
-        // Format object chứa thông tin về file WAV
-        console.log('WAV Format:', format);
-      });
+      // reader.on('format', (format) => {
+      //   // Format object chứa thông tin về file WAV
+      //   console.log('WAV Format:', format);
+      // });
       
-      reader.on('data', (chunk) => {
-        // Đếm số frame đã đọc
-      });
+      // reader.on('data', (chunk) => {
+      //   // Đếm số frame đã đọc
+      // });
       
       reader.on('end', () => {
         // Tính thời lượng dựa trên format
