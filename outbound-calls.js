@@ -146,9 +146,7 @@ export function registerOutboundRoutes(fastify) {
         transcript: "Processing...",
         sentiment: "positive",
         sentiment_score: 0.85,
-        status: "processing",
-        local_file: file.path,
-        received_at: new Date().toISOString()
+        status: "completed"
       };
 
       console.log('[Webhook] Sending initial webhook for:', payload);
