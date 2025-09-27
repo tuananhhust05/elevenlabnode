@@ -188,7 +188,7 @@ export function registerOutboundRoutes(fastify) {
       const fileDurationInSeconds = getWavDuration(latestFile.path);
       // Payload đơn giản
       const payload = {
-        duration: fileDurationInSeconds, // Có thể tính sau nếu cần
+        duration: Math.round(fileDurationInSeconds), // Có thể tính sau nếu cần
         recording_url: recordingUrl,
         transcript: "Transcripting.",
         sentiment: "positive",
