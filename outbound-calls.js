@@ -104,6 +104,70 @@ export function registerOutboundRoutes(fastify) {
     return stereoBuffer;
   }
 
+  // Function to call transcribe API
+  async function callTranscribeAPI(filePath) {
+    try {
+      console.log('[Transcribe] Calling transcribe API for:', filePath);
+      
+      const response = await fetch('http://13.210.192.27:8089/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filepath: filePath }),
+        timeout: 30000 // 30 seconds timeout
+      });
+
+      if (!response.ok) {
+        throw new Error(`Transcribe API failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('[Transcribe] API response:', result);
+      
+      if (result.success) {
+        return {
+          transcript: result.transcript,
+          keywords: result.keywords
+        };
+      } else {
+        throw new Error(result.error || 'Transcribe failed');
+      }
+    } catch (error) {
+      console.error('[Transcribe] Error:', error);
+      throw error;
+    }
+  }
+
+  // Function to send initial webhook (without transcript)
+  async function sendInitialWebhook(file, recordingUrl, duration) {
+    try {
+      const payload = {
+        duration: Math.round(duration),
+        recording_url: recordingUrl,
+        transcript: "Processing...",
+        sentiment: "positive",
+        sentiment_score: 0.85,
+        status: "processing",
+        local_file: file.path,
+        received_at: new Date().toISOString()
+      };
+
+      const response = await fetch("https://4skale.com/api/webhook/auto-update-latest", {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Initial webhook failed: ${response.status}`);
+      }
+
+      console.log('[Webhook] Initial webhook sent successfully');
+      return true;
+    } catch (error) {
+      console.error('[Webhook] Initial webhook error:', error);
+      throw error;
+    }
+  }
 
   // Route to initiate outbound calls
   fastify.post("/outbound-call", async (request, reply) => {
@@ -186,9 +250,19 @@ export function registerOutboundRoutes(fastify) {
       const latestFile = files[0];
       const recordingUrl = `https://4skale.com/recordings/${latestFile.name}`;
       const fileDurationInSeconds = getWavDuration(latestFile.path);
-      // Payload đơn giản
-      const payload = {
-        duration: Math.round(fileDurationInSeconds), // Có thể tính sau nếu cần
+      
+      console.log('[StatusCallback] Latest file:', latestFile.name);
+      
+      // Gọi transcribe API song song với webhook
+      const transcribePromise = callTranscribeAPI(latestFile.path);
+      const webhookPromise = sendInitialWebhook(latestFile, recordingUrl, fileDurationInSeconds);
+      
+      // Chờ cả hai hoàn thành
+      const [transcribeResult, webhookResult] = await Promise.allSettled([transcribePromise, webhookPromise]);
+      
+      // Xử lý kết quả transcribe
+      let finalPayload = {
+        duration: Math.round(fileDurationInSeconds),
         recording_url: recordingUrl,
         transcript: "Transcripting.",
         sentiment: "positive",
@@ -197,25 +271,32 @@ export function registerOutboundRoutes(fastify) {
         local_file: latestFile.path,
         received_at: new Date().toISOString()
       };
-
-      console.log('[StatusCallback] Latest file:', latestFile.name);
-      console.log('[StatusCallback] Sending payload:', payload);
-
-      // Gọi webhook
-      const response = await fetch("https://4skale.com/api/webhook/auto-update-latest", {
+      
+      if (transcribeResult.status === 'fulfilled' && transcribeResult.value) {
+        finalPayload.transcript = transcribeResult.value.transcript;
+        finalPayload.keywords = transcribeResult.value.keywords;
+        console.log('[StatusCallback] Transcribe completed:', transcribeResult.value);
+      } else {
+        console.error('[StatusCallback] Transcribe failed:', transcribeResult.reason);
+      }
+      
+      // Gửi payload cuối cùng với transcript
+      const finalResponse = await fetch("https://4skale.com/api/webhook/auto-update-latest", {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(finalPayload),
       });
 
-      if (!response.ok) {
-        throw new Error(`Webhook failed: ${response.status}`);
+      if (!finalResponse.ok) {
+        throw new Error(`Final webhook failed: ${finalResponse.status}`);
       }
 
       reply.send({
-        message: "Webhook sent successfully",
+        message: "Processing completed",
         file: latestFile.name,
-        payload
+        transcribe_success: transcribeResult.status === 'fulfilled',
+        webhook_success: webhookResult.status === 'fulfilled',
+        final_payload: finalPayload
       });
 
     } catch (error) {
