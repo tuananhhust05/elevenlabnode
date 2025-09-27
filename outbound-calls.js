@@ -168,7 +168,8 @@ export function registerOutboundRoutes(fastify) {
             try {
               console.log("[ElevenLabs] Received message:", data);
               const message = JSON.parse(data);
-
+              console.log("[ElevenLabs] Received message:", data);
+              console.log("[ElevenLabs] Received message type:", message.type);
               switch (message.type) {
                 case "conversation_initiation_metadata":
                   console.log("[ElevenLabs] Received initiation metadata");
