@@ -99,7 +99,10 @@ export function registerOutboundRoutes(fastify) {
       const call = await twilioClient.calls.create({
         from: TWILIO_PHONE_NUMBER,
         to: number,
-        url: `https://4skale.com/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}`
+        url: `https://4skale.com/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}`,
+        statusCallback: "https://4skale.com/status-callback",
+        statusCallbackEvent: ["completed"],
+        statusCallbackMethod: "POST" 
       });
 
       reply.send({
