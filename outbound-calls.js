@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import wav from 'wav';
 
+
 export function registerOutboundRoutes(fastify) {
   // Check for required environment variables
   const {
@@ -44,6 +45,31 @@ export function registerOutboundRoutes(fastify) {
       console.error("Error getting signed URL:", error);
       throw error;
     }
+  }
+  
+  async function getWavDuration(filePath) {
+    return new Promise((resolve, reject) => {
+      const reader = wav.Reader();
+      const stream = fs.createReadStream(filePath);
+      
+      reader.on('format', (format) => {
+        // Format object chứa thông tin về file WAV
+        console.log('WAV Format:', format);
+      });
+      
+      reader.on('data', (chunk) => {
+        // Đếm số frame đã đọc
+      });
+      
+      reader.on('end', () => {
+        // Tính thời lượng dựa trên format
+        const duration = reader.readableLength / (format.sampleRate * format.channels * (format.bitDepth / 8));
+        resolve(duration);
+      });
+      
+      reader.on('error', reject);
+      stream.pipe(reader);
+    });
   }
 
   // Function to decode µ-law to PCM16
@@ -104,7 +130,7 @@ export function registerOutboundRoutes(fastify) {
         statusCallbackEvent: ["completed"],
         statusCallbackMethod: "POST" 
       });
-
+     
       reply.send({
         success: true,
         message: "Call initiated",
@@ -162,10 +188,10 @@ export function registerOutboundRoutes(fastify) {
 
       const latestFile = files[0];
       const recordingUrl = `https://4skale.com/recordings/${latestFile.name}`;
-
+      const fileDurationInSeconds = getWavDuration(latestFile.path);
       // Payload đơn giản
       const payload = {
-        duration: 0, // Có thể tính sau nếu cần
+        duration: fileDurationInSeconds, // Có thể tính sau nếu cần
         recording_url: recordingUrl,
         transcript: "Transcripting.",
         sentiment: "positive",
