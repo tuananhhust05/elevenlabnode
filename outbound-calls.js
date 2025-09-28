@@ -335,14 +335,14 @@ export function registerOutboundRoutes(fastify) {
             console.log("[ElevenLabs] Connected to Conversational AI");
             const initialConfig = {
               type: "conversation_initiation_client_data",
-              conversation_config_override: {
-                agent: {
-                  prompt: {
-                    prompt: customParameters?.prompt || "you are a gary from the phone store"
-                  },
-                  first_message: "hey there! how can I help you today?",
-                },
-              }
+              // conversation_config_override: {
+              //   agent: {
+              //     prompt: {
+              //       prompt: customParameters?.prompt || "you are a gary from the phone store"
+              //     },
+              //     // first_message: "hey there! how can I help you today?",
+              //   },
+              // }
             };
             console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
             elevenLabsWs.send(JSON.stringify(initialConfig));
