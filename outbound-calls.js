@@ -344,7 +344,7 @@ export function registerOutboundRoutes(fastify) {
               //   },
               // }
             };
-            console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
+            // console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
             elevenLabsWs.send(JSON.stringify(initialConfig));
           });
 
