@@ -352,10 +352,14 @@ export function registerOutboundRoutes(fastify) {
           elevenLabsWs.on("message", (data) => {
             try {
               const message = JSON.parse(data);
-              if (message.type === "user_transcript") {
-                console.log("[ElevenLabs AI] User transcript:", message);
-                console.log("[ElevenLabs AI] User transcript:", message.user_transcription_event.user_transcript);
+              // if (message.type === "user_transcript") {
+              //   console.log("[ElevenLabs AI] User transcript:", message);
+              //   console.log("[ElevenLabs AI] User transcript:", message.user_transcription_event.user_transcript);
+              // }
+              if (message.type === "agent_response") {
+                console.log("[ElevenLabs AI] Agent response:", message);
               }
+              console.log("[ElevenLabs AI] Message type :", message.type);
               switch (message.type) {
                 case "audio":
                   if (streamSid) {
