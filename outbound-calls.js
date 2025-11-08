@@ -357,7 +357,27 @@ export function registerOutboundRoutes(fastify) {
               //   console.log("[ElevenLabs AI] User transcript:", message.user_transcription_event.user_transcript);
               // }
               if (message.type === "agent_response") {
-                console.log("[ElevenLabs AI] Agent response:", message);
+                const ai_text = message.agent_response_event?.agent_response;
+                if (ai_text) {
+                  console.log("[ElevenLabs AI] Agent response:", ai_text);
+              
+                  // Chuyển về lowercase và kiểm tra từ "bye"
+                  if (ai_text.toLowerCase().includes("bye")) {
+                    console.log("[ElevenLabs AI] Detected 'bye' in response, ending Twilio call...");
+              
+                    // Gửi lệnh kết thúc cuộc gọi Twilio
+                    if (callSid) {
+                      try {
+                        twilioClient.calls(callSid)
+                          .update({ status: "completed" })
+                          .then(call => console.log(`[Twilio] Call ${call.sid} ended successfully`))
+                          .catch(err => console.error("[Twilio] Error ending call:", err));
+                      } catch (err) {
+                        console.error("[Twilio] Exception ending call:", err);
+                      }
+                    }
+                  }
+                }
               }
               console.log("[ElevenLabs AI] Message type :", message.type);
               switch (message.type) {
