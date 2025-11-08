@@ -363,19 +363,21 @@ export function registerOutboundRoutes(fastify) {
               
                   // Chuyển về lowercase và kiểm tra từ "bye"
                   if (ai_text.toLowerCase().includes("bye")) {
-                    console.log("[ElevenLabs AI] Detected 'bye' in response, ending Twilio call...");
+                    console.log("[ElevenLabs AI] Detected 'bye' in response, will end Twilio call in 2 seconds...");
               
-                    // Gửi lệnh kết thúc cuộc gọi Twilio
-                    if (callSid) {
-                      try {
-                        twilioClient.calls(callSid)
-                          .update({ status: "completed" })
-                          .then(call => console.log(`[Twilio] Call ${call.sid} ended successfully`))
-                          .catch(err => console.error("[Twilio] Error ending call:", err));
-                      } catch (err) {
-                        console.error("[Twilio] Exception ending call:", err);
+                    // Mở luồng khác (nếu cần) hoặc xử lý async
+                    setTimeout(() => {
+                      if (callSid) {
+                        try {
+                          twilioClient.calls(callSid)
+                            .update({ status: "completed" })
+                            .then(call => console.log(`[Twilio] Call ${call.sid} ended successfully`))
+                            .catch(err => console.error("[Twilio] Error ending call:", err));
+                        } catch (err) {
+                          console.error("[Twilio] Exception ending call:", err);
+                        }
                       }
-                    }
+                    }, 2000); // 2000 ms = 2 giây
                   }
                 }
               }
