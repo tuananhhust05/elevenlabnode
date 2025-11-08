@@ -339,7 +339,7 @@ export function registerOutboundRoutes(fastify) {
                 agent: {
                   transcriptions: { enable: true }
                   // prompt: {
-                  //   prompt: customParameters?.prompt || "you are a gary from the phone store"
+                  //   prompt:  customParameters?.prompt || "you are a gary from the phone store"
                   // },
                   // first_message: "hey there! how can I help you today?",
                 },
